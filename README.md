@@ -3,7 +3,7 @@
 This repository contains modifications to the EnKF code in order to enable
 observation-aware RTPS inflation for radar reflectivity DA. This allows for 
 spurious hydrometeor locations, as defined by an observation mask file 
-(fv3sar_tile1_mask), to be inflated accoridng to a 2nd reduced alpha value. 
+(fv3sar_tile1_mask), to be inflated according to a 2nd reduced alpha value. 
 This reduced value should help reduce spurious hydrometeors in the inflated
 ensemble analysis members from the use of RTPS inflation.
 
