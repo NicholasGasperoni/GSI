@@ -1,0 +1,40 @@
+This commit uses GSI-utils as a submodule for python utility.
+Run "git submodule update --init --recursive" after cloning.
+
+
+In order to use obs-aware RTPS, the following two steps are performed
+
+(1) Create mask file "fv3sar_tile1_mask" by running python utility
+    "mrms2fv3grid.py" located in GSI-utils/src/python_utilities/bin
+
+    USAGE:
+    	  python mrms2fv3grid <MASK_THRESHOLD>
+
+    where <MASK_THRESHOLD> is an optional command-line parameter to 
+    define dbz threshold for mask (default is 35.0)
+
+    The utility requires 3 input files: 
+	- Gridded_ref.nc 	    (3d mrms reflectivity data)
+	- fv3sar_tile1_grid_spec.nc (horizontal grid file)
+	- fv3sar_tile1_akbk.nc      (vertical grid file)
+
+    Python modules required to run utility:
+	- netCDF4
+	- numpy
+	- scipy
+
+
+(2) To activate obs-aware RTPS in EnKF run, add the following parameters 
+    to namelist enkf.nml within the &nam_enkf section
+
+
+  if_adaptive_inflate = .true.,  ! turn on the obs-aware RTPS (default .false.)
+  reduced_infl_factor = 0.31579, ! the reduced inflation factor value (default 1.0)
+  if_reduce_hydrometeor_inflation_only = .true., ! only apply reduced_infl_factor to the hydrometeor fields (default .false.)
+  phy_smaller_domain  = .true. ! phyvars use a slight smaller domain than the remaining variables for the LBC update in DA (default .false.)
+
+
+*Note that "reduced_infl_factor" is multiplicative to the value of analpertwt (RTPS alpha)
+For example, if analpertwt = 0.95 and reduced_infl_factor = 0.31579,
+then the RTPS alpha over non-precipitating locations would be 0.95 * 0.31579 = 0.3
+Which will be applied to only hydrometeor variables if if_reduce_hydrometeor_inflation_only is .true.

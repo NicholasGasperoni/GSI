@@ -33,6 +33,7 @@ module params
 !   2018-11-15  groff - Added ancillary parameters
 !                       for EFSOI calculations
 !   2019-03-20  CAPS(C. Tong) - added variables direct reflectivity DA capability
+!   2022-05-02  OU MAP(Y. Wang, N. Gasperoni, X. Wang) - Add obs-aware RTPS capability for fv3-lam
 !
 ! attributes:
 !   language: f95
@@ -252,6 +253,14 @@ character(len=12),dimension(10),public :: incvars_to_zero='NONE' !just picking 1
 ! write ensemble mean analysis (or analysis increment)
 logical,public :: write_ensmean = .false.
 
+! for adaptive obs-aware RTPS
+! if_adaptive_inflate = .true.: turn on the obs-aware RTPS
+! reduced_infl_factor: the reduced inflation factor for obs. mdbz < 35 dBZ
+! if_reduce_hydrometeor_inflation_only = .true.: only apply reduced_infl_factor to the hydrometeor fields.
+logical,public :: if_adaptive_inflate = .false.
+real(r_single),public :: reduced_infl_factor = 1.0
+logical,public :: if_reduce_hydrometeor_inflation_only=.false.
+
 namelist /nam_enkf/datestring,datapath,iassim_order,nvars,&
                    covinflatemax,covinflatemin,deterministic,sortinc,&
                    mincorrlength_fact,corrlengthnh,corrlengthtr,corrlengthsh,&
@@ -282,7 +291,8 @@ namelist /nam_enkf/datestring,datapath,iassim_order,nvars,&
                    fv3_native, paranc, nccompress, write_fv3_incr,incvars_to_zero,write_ensmean, &
                    corrlengthrdrnh,corrlengthrdrsh,corrlengthrdrtr,&
                    lnsigcutoffrdrnh,lnsigcutoffrdrsh,lnsigcutoffrdrtr,&
-                   l_use_enkf_directZDA
+                   l_use_enkf_directZDA,&
+                   if_adaptive_inflate,reduced_infl_factor,if_reduce_hydrometeor_inflation_only
 namelist /nam_wrf/arw,nmm,nmm_restart
 namelist /nam_fv3/fv3fixpath,nx_res,ny_res,ntiles,l_pres_add_saved,l_fv3reg_filecombined, &
                   fv3_io_layout_nx,fv3_io_layout_ny

@@ -103,13 +103,14 @@ use mpimod, only: mpi_comm_world
 use mpisetup, only: mpi_real4,mpi_sum,mpi_comm_io,mpi_in_place,numproc,nproc,&
                 mpi_integer,mpi_wtime,mpi_status,mpi_real8,mpi_max
 use params, only: datapath, nanals, simple_partition, letkf_flag, nobsl_max,&
-                  neigv, corrlengthnh, corrlengthsh, corrlengthtr, lupd_obspace_serial,letkf_bruteforce_search
+                  neigv, corrlengthnh, corrlengthsh, corrlengthtr, lupd_obspace_serial,letkf_bruteforce_search,&
+                  if_adaptive_inflate,nlevs
 use enkf_obsmod, only: nobstot, obloc, oblnp, ensmean_ob, obtime, &
                        anal_ob, anal_ob_modens, corrlengthsq
 use kinds, only: r_kind, i_kind, r_double, r_single
 use kdtree2_module, only: kdtree2, kdtree2_create, kdtree2_destroy, &
                           kdtree2_result, kdtree2_r_nearest
-use gridinfo, only: gridloc, logp, latsgrd, nlevs_pres, npts
+use gridinfo, only: gridloc, logp, latsgrd, nlevs_pres, npts,inflation_mask
 use constants, only: zero, rad2deg, deg2rad
 
 implicit none
@@ -118,7 +119,8 @@ public :: load_balance, loadbal_cleanup, gather_chunks, scatter_chunks
 
 real(r_single),public, allocatable, dimension(:,:) :: lnp_chunk, &
                                                       anal_obchunk_prior, &
-                                                      anal_obchunk_modens_prior
+                                                      anal_obchunk_modens_prior,&
+                                                      infm_chunk
 real(r_single),public, allocatable, dimension(:,:,:,:) :: anal_chunk, anal_chunk_prior
 real(r_single),public, allocatable, dimension(:,:,:) :: ensmean_chunk, ensmean_chunk_prior
 
@@ -238,6 +240,15 @@ do i=1,numptsperproc(nproc+1)
       lnp_chunk(i,nn) = logp(indxproc(nproc+1,i),nn)
    end do
 end do
+
+if( if_adaptive_inflate )then
+  allocate(infm_chunk(numptsperproc(nproc+1),nlevs))
+  do i=1,numptsperproc(nproc+1)
+     do nn=1,nlevs
+       infm_chunk(i,nn) = inflation_mask(indxproc(nproc+1,i),nn)
+     end do
+  end do
+end if
 
 ! for serial filter, partition obs for observation space update.
 if (.not. letkf_flag .or. lupd_obspace_serial) then

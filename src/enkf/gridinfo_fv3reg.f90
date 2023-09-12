@@ -37,6 +37,7 @@ module gridinfo
 !   2016-04-20  Modify to handle the updated nemsio sig file (P, DP & DPDT removed)
 !   2021-02-08  CAPS(J. Park) - Modified 'vars3d_supported' for direct reflectivity DA capability
 !   2022-06-    Ting   --  Implement paranc=.true. for fv3-lam
+!   2022-05-02  OU MAP(Y. Wang, N. Gasperoni, X. Wang) - Add obs-aware RTPS capability for fv3-lam
 !
 ! attributes:
 !   language: f95
@@ -47,7 +48,7 @@ use mpisetup, only: nproc, mpi_integer, mpi_real4,mpi_status
 use mpimod, only: mpi_comm_world
 use params, only: datapath,nlevs,nlons,nlats,use_gfs_nemsio, fgfileprefixes, &
                   fv3fixpath, nx_res,ny_res, ntiles,l_fv3reg_filecombined,paranc, &
-                  fv3_io_layout_nx,fv3_io_layout_ny
+                  fv3_io_layout_nx,fv3_io_layout_ny,if_adaptive_inflate
           
 use kinds, only: r_kind, i_kind, r_double, r_single
 use constants, only: one,zero,pi,cp,rd,grav,rearth,max_varname_length
@@ -68,6 +69,7 @@ real(r_single),public, allocatable, dimension(:) :: lonsgrd, latsgrd
 ! arrays passed to kdtree2 routines must be single
 real(r_single),public, allocatable, dimension(:,:) :: gridloc
 real(r_single),public, allocatable, dimension(:,:) :: logp
+real(r_single),public, allocatable, dimension(:,:) :: inflation_mask
 integer(i_kind),                                  public     :: nlevs_pres
 integer(i_kind),public :: npts
 integer(i_kind),public :: ntrunc
@@ -109,6 +111,7 @@ real(r_single), allocatable, dimension(:,:) :: lat_tile,lon_tile,ps
 real(r_single), allocatable, dimension(:,:) :: loclat_tile,loclon_tile
 real(r_single), allocatable, dimension(:,:,:) :: delp,g_prsi
 real(r_single), allocatable, dimension(:,:,:) :: delploc
+real(r_single), allocatable, dimension(:,:,:) :: vartemp
 real(r_single) ptop
 character(len=4) char_nxres
 character(len=4) char_nyres
@@ -197,6 +200,34 @@ if(nproc.eq.0) then
       ii=ii+1
     enddo
   enddo
+
+  if( if_adaptive_inflate )then
+      allocate(vartemp(nx_res,ny_res,nlevs))
+      allocate(inflation_mask(npts,nlevs))
+      nn = 0
+      do ntile=1,ntiles
+         nn_tile0=(ntile-1)*nx_res*ny_res
+         nn=nn_tile0
+         write(char_tile, '(i1)') ntile
+         filename='fv3sar_tile'//char_tile//'_mask'
+         call nc_check(nf90_open( trim(adjustl(filename)),nf90_nowrite,file_id),&
+         myname_,'open: '//trim(adjustl(filename)) )
+         call read_fv3_restart_data3d('obsmask',filename,file_id,vartemp)
+         call nc_check( nf90_close(file_id),&
+         myname_,'close '//trim(filename) )
+         do k=1,nlevs
+            nn = nn_tile0
+            do j=1,ny_res
+              do i=1,nx_res
+                 nn=nn+1
+                 inflation_mask(nn,k)=vartemp(i,j,k)
+              enddo
+            enddo
+         enddo
+     end do
+     deallocate(vartemp)
+
+  end if
 
 endif !nproc=0 
 
@@ -464,11 +495,17 @@ if (nproc .ne. 0) then
    allocate(latsgrd(npts),lonsgrd(npts))
    allocate(logp(npts,nlevs_pres)) ! log(ens mean first guess press) on mid-layers
    allocate(eta1_ll(nlevsp1),eta2_ll(nlevsp1))
+   if( if_adaptive_inflate ) allocate(inflation_mask(npts,nlevs))
 endif
 if(nproc==0) write(6,*)logp(1,:)
 do k=1,nlevs_pres
   call mpi_bcast(logp(1,k),npts,mpi_real4,0,MPI_COMM_WORLD,ierr)
 enddo
+if( if_adaptive_inflate ) then
+  do k=1,nlevs
+     call mpi_bcast(inflation_mask(1,k),npts,mpi_real4,0,MPI_COMM_WORLD,ierr)
+  end do
+end if
 call mpi_bcast(lonsgrd,npts,mpi_real4,0,MPI_COMM_WORLD,ierr)
 call mpi_bcast(latsgrd,npts,mpi_real4,0,MPI_COMM_WORLD,ierr)
 call mpi_bcast(eta1_ll,nlevsp1,mpi_real4,0,MPI_COMM_WORLD,ierr)

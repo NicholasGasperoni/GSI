@@ -43,6 +43,7 @@ module gridio
   use params,   only: nx_res,ny_res,nlevs,ntiles,l_fv3reg_filecombined,&
                   fv3_io_layout_nx,fv3_io_layout_ny,nanals
   use params,   only:  pseudo_rh
+  use params,   only:  phy_smaller_domain
   use mpeu_util, only: getindex
   use read_fv3regional_restarts,only:read_fv3_restart_data1d,read_fv3_restart_data2d
   use read_fv3regional_restarts,only:read_fv3_restart_data3d,read_fv3_restart_data4d
@@ -113,7 +114,7 @@ contains
     integer(i_kind) file_id,file_id1,file_id2
     real(r_single), dimension(:,:,:), allocatable ::workvar3d,uworkvar3d,&
                         vworkvar3d,tvworkvar3d,tsenworkvar3d,&
-                        workprsi,qworkvar3d
+                        workprsi,qworkvar3d,workvar3d_tmp
     real(r_double),dimension(:,:,:),allocatable:: qsatworkvar3d
     real(r_single), dimension(:,:),   allocatable ::pswork
 
@@ -495,7 +496,15 @@ contains
            if (dbz_ind > 0) then
                varstrname = 'ref_f3d'
                call fv3lamfile%get_idfn(varstrname,file_id,fv3filename)
-               call read_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d)
+               if(phy_smaller_domain)then
+                  allocate(workvar3d_tmp(nx_res-6,ny_res-6,nlevs))
+                  call read_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d_tmp)
+                  workvar3d = 0.0_r_kind
+                  workvar3d(4:nx_res-3,4:ny_res-3,1:nlevs)=workvar3d_tmp
+                  deallocate(workvar3d_tmp)
+               else
+                  call read_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d)
+               end if
                do k=1,nlevs
                    nn = nn_tile0
                    do j=1,ny_res
@@ -651,7 +660,7 @@ subroutine writegriddata(nanal1,nanal2,vars3d,vars2d,n3d,n2d,levels,ndim,vargrid
     real(r_single), dimension(:,:), allocatable ::pswork
     real(r_single), dimension(:,:,:), allocatable ::workvar3d,workinc3d,workinc3d2,uworkvar3d,&
                         vworkvar3d,tvworkvar3d,tsenworkvar3d,&
-                        workprsi,qworkvar3d
+                        workprsi,qworkvar3d,workvar3d_tmp
 
     real(r_single)              :: clip
 
@@ -739,6 +748,9 @@ subroutine writegriddata(nanal1,nanal2,vars3d,vars2d,n3d,n2d,levels,ndim,vargrid
                                              fileid2=file_id1,fv3fn2=trim(adjustl(fv3filename1)) )
                
                if(dbz_ind > 0) then
+                  fv3filename2=trim(adjustl(filename))//"_phyvar"
+                  call nc_check(nf90_open(trim(adjustl(fv3filename2)),nf90_write,file_id2),&
+                       myname_,'open: '//trim(adjustl(fv3filename2)) )
                   call fv3lamfile%setupfile(fileid1=file_id,fv3fn1=trim(adjustl(fv3filename))  , &
                                          fileid2=file_id1,fv3fn2=trim(adjustl(fv3filename1)),&
                                          fileid3=file_id2,fv3fn3=trim(adjustl(fv3filename2)))
@@ -1043,7 +1055,14 @@ subroutine writegriddata(nanal1,nanal2,vars3d,vars2d,n3d,n2d,levels,ndim,vargrid
           if (dbz_ind > 0) then
              varstrname = 'ref_f3d'
              call fv3lamfile%get_idfn(varstrname,file_id,fv3filename)
-             call read_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d)
+             if(phy_smaller_domain)then
+                allocate(workvar3d_tmp(nx_res-6,ny_res-6,nlevs))
+                call read_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d_tmp)
+                workvar3d = 0.0_r_kind
+                workvar3d(4:nx_res-3,4:ny_res-3,1:nlevs)=workvar3d_tmp
+             else
+                call read_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d)
+             end if
              do k=1,nlevs
                 nn = nn_tile0
                 do j=1,ny_res
@@ -1055,7 +1074,13 @@ subroutine writegriddata(nanal1,nanal2,vars3d,vars2d,n3d,n2d,levels,ndim,vargrid
              enddo
              workvar3d=workvar3d+workinc3d
              where (workvar3d < 0.0_r_kind) workvar3d = 0.0_r_kind
-             call write_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d)
+             if(phy_smaller_domain)then
+                workvar3d_tmp = workvar3d(4:nx_res-3,4:ny_res-3,1:nlevs)
+                call write_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d_tmp)
+                deallocate(workvar3d_tmp)
+             else
+                call write_fv3_restart_data3d(varstrname,fv3filename,file_id,workvar3d)
+             end if
 
           endif
 

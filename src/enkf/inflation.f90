@@ -57,6 +57,8 @@ module inflation
 !                used to be the same) and the "chunks" come from loadbal 
 !   2017-05-12: Johnson, Y. Wang and X. Wang - Add height-dependent inflation,
 !                                              POC:xuguang.wang@ou.edu
+!   2022-05-02  OU MAP(Y. Wang, N. Gasperoni, X. Wang) - Add obs-aware RTPS capability for fv3-lam
+!                                                        POC:xuguang.wang@ou.edu
 ! attributes:
 !   language: f95
 !
@@ -71,14 +73,15 @@ use params, only: analpertwtnh,analpertwtsh,analpertwttr,nanals,nlevs,&
                   analpertwtnh_rtpp,analpertwtsh_rtpp,analpertwttr_rtpp,&
                   latbound, delat, datapath, covinflatemax, save_inflation, &
                   covinflatemin, nlons, nlats, smoothparm, nbackgrounds,&
-                  covinflatenh,covinflatesh,covinflatetr,lnsigcovinfcutoff
+                  covinflatenh,covinflatesh,covinflatetr,lnsigcovinfcutoff,&
+                  if_adaptive_inflate,reduced_infl_factor,if_reduce_hydrometeor_inflation_only
 use kinds, only: r_single, i_kind
 use mpeu_util, only: getindex
 use constants, only: one, zero, rad2deg, deg2rad
 use covlocal, only: latval, taper
 use controlvec, only: ncdim, cvars3d, cvars2d, nc3d, nc2d, clevels
 use gridinfo, only: latsgrd, logp, npts, nlevs_pres
-use loadbal, only: indxproc, numptsperproc, npts_max, anal_chunk, anal_chunk_prior
+use loadbal, only: indxproc, numptsperproc, npts_max, anal_chunk, anal_chunk_prior,infm_chunk
 use smooth_mod, only: smooth
 
 implicit none
@@ -102,6 +105,7 @@ real(r_single),dimension(ndiag) :: sumcoslat,suma,suma2,sumi,sumf,sumitot,sumato
      sumcoslattot,suma2tot,sumftot
 real(r_single) fnanalsml,coslat
 integer(i_kind) i,nn,iunit,ierr,nb,nnlvl,ps_ind
+integer(i_kind) ql_ind,qr_ind,qs_ind,qi_ind,qg_ind,dbz_ind
 character(len=500) filename
 real(r_single), allocatable, dimension(:,:) :: tmp_chunk2,covinfglobal
 real(r_single) r
@@ -153,6 +157,12 @@ sumcoslat = zero
 sprdmax = -9.9e31_r_single
 sprdmin = 9.9e31_r_single
 ps_ind  = getindex(cvars2d, 'ps')  ! Ps (2D)
+ql_ind = getindex(cvars3d, 'ql')
+qr_ind = getindex(cvars3d, 'qr')
+qs_ind = getindex(cvars3d, 'qs')
+qi_ind = getindex(cvars3d, 'qi')
+qg_ind = getindex(cvars3d, 'qg')
+dbz_ind = getindex(cvars3d, 'dbz')
 
 do nn=1,ncdim
  do i=1,numptsperproc(nproc+1)
@@ -195,7 +205,34 @@ do nn=1,ncdim
    ! clip values to avoid NaNs.
    asprd = max(asprd,tiny(asprd))
    fsprd = max(fsprd,tiny(fsprd))
-   tmp_chunk2(i,nn) = analpertwt*((fsprd-asprd)/asprd) + 1.0
+   if(if_adaptive_inflate)then
+     if ( nn == ncdim ) then ! ps
+         nnlvl=1
+     else
+         nnlvl=nn - nn/nlevs*nlevs
+     end if
+     if( nnlvl == 0 ) nnlvl = nlevs
+     if(infm_chunk(i,nnlvl) < -90.0_r_single)then
+       if ( if_reduce_hydrometeor_inflation_only )then
+         if( (nn .ge. (ql_ind-1)*nlevs+1 .and. nn .le. (ql_ind-1)*nlevs+nlevs) .or. &
+             (nn .ge. (qr_ind-1)*nlevs+1 .and. nn .le. (qr_ind-1)*nlevs+nlevs) .or. &
+             (nn .ge. (qs_ind-1)*nlevs+1 .and. nn .le. (qs_ind-1)*nlevs+nlevs) .or. &
+             (nn .ge. (qi_ind-1)*nlevs+1 .and. nn .le. (qi_ind-1)*nlevs+nlevs) .or. &
+             (nn .ge. (qg_ind-1)*nlevs+1 .and. nn .le. (qg_ind-1)*nlevs+nlevs) .or. &
+             (nn .ge. (dbz_ind-1)*nlevs+1 .and. nn .le. (dbz_ind-1)*nlevs+nlevs) ) then
+             tmp_chunk2(i,nn) = reduced_infl_factor*analpertwt*((fsprd-asprd)/asprd) + 1.0
+         else
+             tmp_chunk2(i,nn) = analpertwt*((fsprd-asprd)/asprd) + 1.0
+         end if
+       else
+         tmp_chunk2(i,nn) = reduced_infl_factor*analpertwt*((fsprd-asprd)/asprd) + 1.0
+       end if
+     else
+       tmp_chunk2(i,nn) = analpertwt*((fsprd-asprd)/asprd) + 1.0
+     end if
+   else
+     tmp_chunk2(i,nn) = analpertwt*((fsprd-asprd)/asprd) + 1.0
+   end if
 
    if ( nn == ncdim ) then
        nnlvl=nlevs_pres

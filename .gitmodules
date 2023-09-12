@@ -2,3 +2,6 @@
   path = fix
   url = https://github.com/NOAA-EMC/GSI-fix
   branch = develop
+[submodule "GSI-utils"]
+	path = GSI-utils
+	url = https://github.com/NicholasGasperoni/GSI-utils.git
