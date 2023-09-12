@@ -13,6 +13,7 @@ Note the GSI can be compiled as usual according to INSTALL.md
 To clone, issue the following github commands
 
 git clone https://github.com/NicholasGasperoni/GSI.git
+
 git submodule update --init --recursive
 
 Points of contact:
